@@ -45,7 +45,7 @@ func main() {
 		l, err := net.Listen("tcp", fmt.Sprintf("%s:%d", h, listen))
 
 		if err != nil {
-			log.Fatalf("fatal error listening: %v", err)
+			log.Fatalf("fatal error listening: %s,  %v", h, err)
 		} else {
 			log.Printf("listening on %d\n", listen)
 		}
