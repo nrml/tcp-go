@@ -8,7 +8,7 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"strings"
+	//"strings"
 )
 
 var (
@@ -20,6 +20,8 @@ func main() {
 	var err error
 
 	err = load()
+
+	fmt.Printf("found %d proxies\n", len(proxies))
 
 	if err != nil {
 		log.Fatal(err)
@@ -34,30 +36,39 @@ func main() {
 		listen = 80
 	}
 
-	log.Printf("listening on %d\n", listen)
+	listeners := make(map[int]net.Listener)
 
-	l, err := net.Listen("tcp", fmt.Sprintf(":%d", listen))
-	defer l.Close()
+	for h, p := range proxies {
+
+		log.Printf("range on %s:%d\n", h, p)
+		log.Printf("trying to listen on: %v", fmt.Sprintf("%s:%d", h, listen))
+		l, err := net.Listen("tcp", fmt.Sprintf("%s:%d", h, listen))
+
+		if err != nil {
+			log.Fatalf("fatal error listening: %v", err)
+		} else {
+			log.Printf("listening on %d\n", listen)
+		}
+
+		listeners[p] = l
+
+		defer l.Close()
+	}
 
 	for {
-		conn, err := l.Accept()
-		if err != nil {
-			log.Fatal(err)
+		for p, lstn := range listeners {
+			conn, err := lstn.Accept()
+			if err != nil {
+				log.Printf("failed to listen for internal port %d", p)
+			}
+			go func(c net.Conn, port int) {
+				listenAndForward(c, port)
+			}(conn, p)
+
 		}
-		go func(c net.Conn) {
-			local := c.LocalAddr().String()
-			remote := c.RemoteAddr().String()
-			log.Printf("read local address: %v\n", local)
-			log.Printf("read remote address: %v\n", remote)
-			spl := strings.Split(local, ":")
-			nmsl := spl[:len(spl)-1]
-			//in case of ipv6
-			nm := strings.Join(nmsl, ":")
-			localAddr := fmt.Sprintf("%s:%d", nm, proxies[nm])
-			log.Printf("wants to forward to: %v\n", localAddr)
-			forward(c, localAddr)
-		}(conn)
+
 	}
+
 }
 
 ///{
@@ -73,7 +84,15 @@ func load() error {
 	dec.Decode(&proxies)
 	return err
 }
+func listenAndForward(conn net.Conn, p int) {
+	go func(c net.Conn, port int) {
 
+		localAddr := fmt.Sprintf("127.0.0.1:%d", port)
+		log.Printf("wants to forward to: %v\n", localAddr)
+		forward(c, localAddr)
+	}(conn, p)
+
+}
 func forward(local net.Conn, remoteAddr string) {
 	remote, err := net.Dial("tcp", remoteAddr)
 	if remote == nil {
